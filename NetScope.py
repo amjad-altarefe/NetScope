@@ -5,7 +5,7 @@ from rich.console import Console
 
 console = Console()
 
-INTERFACE = r"\Device\NPF_{95AB00F4-7525-48AC-80C2-6C77788B9CB2}"
+INTERFACE = r"\Device\NPF_{enter your interface}"
 OUTPUT_FILE = "captured_packets.json"
 
 
