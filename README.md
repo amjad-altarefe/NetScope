@@ -42,26 +42,6 @@ pip install pyshark rich
 
 ---
 
-## Setup
-
-1. **Set Your Network Interface**
-
-Edit the script and set the interface you want to capture from:
-
-```python
-INTERFACE = "\\Device\\NPF_{YOUR_INTERFACE_GUID}"
-OUTPUT_FILE = "packets.json"
-```
-
-2. **List Available Interfaces**
-
-```python
-import pyshark
-print(pyshark.LiveCapture().interfaces)
-```
-
----
-
 ## Usage
 
 ### 1. Start Packet Capture
@@ -71,8 +51,8 @@ Run the script:
 ```bash
 python NetScope.py
 ```
-
-You will be prompted to enter a **filter**:
+Select the interface 
+And then you will be prompted to enter a **filter**:
 
 - `TCP` – capture only TCP packets  
 - `UDP` – capture only UDP packets  
@@ -157,6 +137,9 @@ This allows **offline analysis** or integration with other tools.
 ---
 
 ## Screenshots
+- ***showing the interfaces to select one*** 
+
+![Live Capture](docs/interfaces.png)
 
  - ***showing the live table*** 
 
