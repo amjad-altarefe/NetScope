@@ -1,13 +1,35 @@
 import pyshark
-import json
+import shutil
+import subprocess
 from rich.table import Table
 from rich.console import Console
+import os
 
 console = Console()
 
-INTERFACE = r"\Device\NPF_{enter your interface}"
-OUTPUT_FILE = "captured_packets.json"
+tshark_path = shutil.which("tshark")
+TCP = '6'
+UDP = "17"
+ICMP = "1" 
 
+OUTPUT_FILE = "captured_packets.pcapng"
+global_table = None
+
+def choose_interface():
+    result = subprocess.run(
+        [tshark_path, "-D"],
+        text=True,
+        capture_output=True
+    ).stdout.strip()
+
+    interfaces = [line.split()[1] for line in result.splitlines()]
+
+    console.print("[bold cyan]=[/bold cyan]" * 70)
+    console.print(result)
+    console.print("[bold cyan]=[/bold cyan]" * 70)
+
+    i = int(input("Which interface would you like to listen on: "))
+    return interfaces[i - 1]
 
 def choose_filter():
     print("Choose capture filter:")
@@ -18,25 +40,25 @@ def choose_filter():
 
     choice = input("Enter choice: ").strip()
 
-    if choice == "1":
-        return "tcp"
-    elif choice == "2":
-        return "udp"
-    elif choice == "3":
-        return "icmp"
-    else:
-        return None   # all packets
+    return {
+        "1": "tcp",
+        "2": "udp",
+        "3": "icmp"
+    }.get(choice, None)
 
+def clean_screen():
+    os.system('cls' if os.name == 'nt' else 'clear')
 
-def capture_packets(packet_filter):
-    packets_list = []
+def capture_packets(interface, packet_filter):
+    global global_table
 
     capture = pyshark.LiveCapture(
-        interface=INTERFACE,
-        display_filter=packet_filter
+        interface = interface,
+        output_file = OUTPUT_FILE,
+        tshark_path = tshark_path,
+        bpf_filter = packet_filter
     )
 
-    seq = 1
     table = Table(title="Live Packet Capture (updating...)")
     table.add_column("SEQ#", style="bold cyan")
     table.add_column("Source IP", style="green")
@@ -47,107 +69,85 @@ def capture_packets(packet_filter):
     table.add_column("Destination MAC", style="magenta")
     table.add_column("Protocol", style="red")
 
+    seq = 1
     try:
-        for pkt in capture.sniff_continuously(packet_count=50):
-            try:
-                src_ip = pkt.ip.src if hasattr(pkt, "ip") else "N/A"
-                dst_ip = pkt.ip.dst if hasattr(pkt, "ip") else "N/A"
+        for pkt in capture.sniff_continuously(packet_count = 50):
+            src_ip = pkt.ip.src if hasattr(pkt, "ip") else "N/A"
+            dst_ip = pkt.ip.dst if hasattr(pkt, "ip") else "N/A"
 
-                src_mac = pkt.eth.src if hasattr(pkt, "eth") else "N/A"
-                dst_mac = pkt.eth.dst if hasattr(pkt, "eth") else "N/A"
+            src_mac = pkt.eth.src if hasattr(pkt, "eth") else "N/A"
+            dst_mac = pkt.eth.dst if hasattr(pkt, "eth") else "N/A"
+            
+            if hasattr(pkt, 'ip') :
+                layer = ''
+                if pkt.ip.proto == TCP:
+                    layer = "TCP"
+                elif pkt.ip.proto == UDP:
+                    layer = "UDP"
+                elif pkt.ip.proto == ICMP:
+                    layer = "ICMP"
+                else: 
+                    layer = ''
 
-                protocol = pkt.highest_layer
+            Hprotocol = pkt.highest_layer
+            protocol = layer + "/" + Hprotocol
+            
+            src_port = dst_port = src_port = dst_port = "N/A"
 
-                src_port = "N/A"
-                dst_port = "N/A"
+            if hasattr(pkt, "tcp"):
+                src_port = pkt.tcp.srcport
+                dst_port = pkt.tcp.dstport
+            elif hasattr(pkt, "udp"):
+                src_port = pkt.udp.srcport
+                dst_port = pkt.udp.dstport
 
-                if protocol == "TCP":
-                    src_port = pkt.tcp.srcport
-                    dst_port = pkt.tcp.dstport
-                elif protocol == "UDP":
-                    src_port = pkt.udp.srcport
-                    dst_port = pkt.udp.dstport
+            table.add_row(
+                str(seq),
+                src_ip,
+                str(src_port),
+                src_mac,
+                dst_ip,
+                str(dst_port),
+                dst_mac,
+                protocol
+            )
 
-                table.add_row(
-                    str(seq),
-                    src_ip,
-                    str(src_port),
-                    src_mac,
-                    dst_ip,
-                    str(dst_port),
-                    dst_mac,
-                    protocol
-                )
-
-                # Update the screen with the schedule
-                console.clear()
-                console.print(table)
-
-                packets_list.append({
-                    "seq": seq,
-                    "source_ip": src_ip,
-                    "source_port": src_port,
-                    "source_mac": src_mac,
-                    "destination_ip": dst_ip,
-                    "destination_port": dst_port,
-                    "destination_mac": dst_mac,
-                    "protocol": protocol
-                })
-
-                seq += 1
-
-            except Exception:
-                continue
+            console.clear()
+            console.print(table)
+            seq += 1
 
     except KeyboardInterrupt:
         console.print("[bold red]Capture stopped by user[/bold red]")
 
     finally:
         capture.close()
-    
-        with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
-            json.dump(packets_list, f, indent=4)
-
-        console.print(f"\n[bold green]Packets saved to {OUTPUT_FILE}[/bold green]")
-
+        global_table = table
+        console.print(f"[bold green]Saved to {OUTPUT_FILE}[/bold green]")
 
 def show_packet_details():
-    with open(OUTPUT_FILE, "r", encoding="utf-8") as f:
-        packets = json.load(f)
+
+    capture = pyshark.FileCapture(OUTPUT_FILE, tshark_path=tshark_path)
 
     while True:
+        clean_screen()
+        console.print(global_table)
+        console.print("[bold cyan]-[/bold cyan]" * 100)
+
         try:
-            seq_num = int(input("\nEnter packet sequence number (0 to exit): "))
+            seq = int(input("Enter packet SEQ to inspect: ")) - 1
+            console.print(capture[seq])
+            console.input("\nPress Enter to go back or Ctrl + C to quit...")
 
-            if seq_num == 0:
-                console.print("[bold green]Exiting packet lookup.[/bold green]")
-                break
-
-            found = False
-            for pkt in packets:
-                if pkt["seq"] == seq_num:
-                    table = Table(title=f"Packet Details - SEQ {seq_num}", show_lines=True)
-                    table.add_column("Field", style="cyan", no_wrap=True)
-                    table.add_column("Value", style="magenta")
-                    for key, value in pkt.items():
-                        table.add_row(key, str(value))
-                    console.print(table)
-                    found = True
-                    break
-
-            if not found:
-                console.print(f"[bold red]Packet with SEQ {seq_num} not found.[/bold red]")
-
-        except ValueError:
-            console.print("[bold yellow]Please enter a valid number.[/bold yellow]")
-
-
+        except KeyboardInterrupt:
+            console.print("\n[bold red]Closing...[/bold red]")
+            break
+        except Exception as e:
+            console.print(f"[bold red]An error has occured: {type(e)}[/bold red]")
 
 def main():
+    interface = choose_interface()
     packet_filter = choose_filter()
-    capture_packets(packet_filter)
+    capture_packets(interface, packet_filter)
     show_packet_details()
 
-
-if __name__ == "__main__":
-    main()
+main()
